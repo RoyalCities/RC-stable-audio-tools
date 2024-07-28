@@ -45,6 +45,7 @@ setup(
         'wandb<=0.15.4',
         'webdataset<=0.2.48',
         'x-transformers<1.27.0',
-        'basic_pitch<=0.2.0'
+        'basic_pitch',
+        'hffs'
     ],
 )

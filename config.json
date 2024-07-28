@@ -1,4 +1,11 @@
 {
     "models_directory": "models",
-    "generations_directory": "generations"
+    "generations_directory": "generations",
+    "hffs": [{
+        "path": "models",
+        "options": [
+            "RoyalCities/RC_Infinite_Pianos",
+            "cocktailpeanut/stable-audio-open-1.0"
+        ]
+    }]
 }

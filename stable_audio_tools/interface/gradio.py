@@ -1,4 +1,5 @@
 import gc
+import platform
 import os
 import time
 import numpy as np
@@ -7,6 +8,7 @@ import json
 import torch
 import torchaudio
 import random
+import hffs
 
 from aeiou.viz import audio_spectrogram_image
 from einops import rearrange
@@ -34,6 +36,7 @@ with open("config.json") as config_file:
 model = None
 sample_rate = 32000
 sample_size = 1920000
+DEVICE = None
 
 output_directory = config['generations_directory']
 
@@ -86,6 +89,7 @@ def convert_audio_to_midi(audio_path, output_dir):
         save_midi=True,
         sonify_midi=False,
         save_model_outputs=False,
+        model_or_model_path=ICASSP_2022_MODEL_PATH,
         save_notes=False
     )
 
@@ -317,6 +321,7 @@ def update_config_dropdown(selected_ckpt, ckpt_files):
         return gr.update(choices=["Error finding configs"], value="Error finding configs")
 
 def load_model_action(selected_ckpt, selected_config, ckpt_files):
+    global DEVICE
     try:
         ckpt_path = next(path for name, path in ckpt_files if name == selected_ckpt)
         config_path = os.path.join(os.path.dirname(ckpt_path), selected_config)
@@ -324,7 +329,7 @@ def load_model_action(selected_ckpt, selected_config, ckpt_files):
         model, model_config = load_model(
             model_config=json.load(open(config_path)),
             model_ckpt_path=ckpt_path,
-            device="cuda",
+            device=DEVICE,
             model_half=False
         )
         
@@ -557,6 +562,9 @@ def create_txt2audio_ui(model_config, initial_ckpt):
             create_sampling_ui(model_config, initial_ckpt)
         with gr.Tab("Inpainting"):
             create_sampling_ui(model_config, initial_ckpt, inpainting=True)
+        with gr.Tab("Download Models"):
+            gr.HTML("<h2>Download</h2><div>Download a model and restart the app to apply.</div>")
+            hffs.from_config(config)
     return ui
 
 def create_diffusion_uncond_ui(model_config):
@@ -702,6 +710,19 @@ def create_lm_ui(model_config):
     return ui
 
 def create_ui(model_config_path=None, ckpt_path=None, pretrained_name=None, pretransform_ckpt_path=None, model_half=False):
+    if pretrained_name is None and model_config_path is None and ckpt_path is None:
+        print("checking the models folder for a default checkpoint")
+        try:
+            ckpt_files = get_models_and_configs(config['models_directory'])
+            ckpt_path = ckpt_files[0][1]
+            configs = get_config_files(ckpt_path)
+            model_config_path = os.path.join(os.path.dirname(ckpt_path), configs[0])
+        except IndexError:
+            print("no default checkpoint.") 
+            with gr.Blocks() as ui:
+                gr.HTML("<h2>Initialize</h2><div>Download a model first, and restart the app.</div>")
+                hffs.from_config(config)
+            return ui
     assert (pretrained_name is not None) ^ (model_config_path is not None and ckpt_path is not None), "Must specify either pretrained name or provide a model config and checkpoint, but not both"
 
     if model_config_path is not None:
@@ -725,6 +746,8 @@ def create_ui(model_config_path=None, ckpt_path=None, pretrained_name=None, pret
         device = torch.device("cpu")
 
     print("Using device:", device)
+    global DEVICE
+    DEVICE = device
 
     initial_ckpt = ckpt_path if ckpt_path is not None else pretrained_name
 

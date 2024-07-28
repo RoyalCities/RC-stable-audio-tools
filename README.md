@@ -101,22 +101,37 @@ A sample `config.json` is included in the root directory. Customize it to specif
 
 Start the Gradio interface using a batch file or directly from the command line:
 
-- **Batch file example:**
+#### Batch file example
 
-  ```batch
-  @echo off
-  cd /d path-to-your-venv/Scripts
-  call activate
-  cd /d path-to-your-stable-audio-tools
-  python run_gradio.py --model-config models/path-to-config/example_config.json --ckpt-path models/path-to-config/example.ckpt
-  pause
-  ```
+```batch
+@echo off
+cd /d path-to-your-venv/Scripts
+call activate
+cd /d path-to-your-stable-audio-tools
+python run_gradio.py --model-config models/path-to-config/example_config.json --ckpt-path models/path-to-config/example.ckpt
+pause
+```
 
-- **Command line:**
+#### Basic command line example
 
-  ```bash
-  python run_gradio.py --model-config models/path-to-config/example_config.json --ckpt-path models/path-to-config/example.ckpt
-  ```
+You can launch the web UI by simply calling:
+
+```bash
+python run_gradio.py
+```
+
+This will start the gradio UI. If you're running for the first time, it will launch a model downloader interface, where you can initialize the app by downloading your first model. After downloading, you will need to restart the app to get the full UI.
+
+When you run the app AFTER downloading a model, the full UI will launch.
+
+
+#### Custom command line example
+
+You can also launch the app with custom flags:
+
+```bash
+python run_gradio.py --model-config models/path-to-config/example_config.json --ckpt-path models/path-to-config/example.ckpt
+```
 
 ### 🎶 Generating Audio and MIDI
 
@@ -127,6 +142,17 @@ The interface has been expanded with Bar/BPM settings (which modifies both the u
 Models must be stored inside their own sub folder along with their accompanying config files. i.e. A single finetune could have multiple checkpoints. All related checkpoints could go inside of the same "model1" subfolder but its important their associated config file is included within the same folder as the checkpoint itself.
 
 To switch models simply pick the model you want to load using the drop down and pick "Load Model". 
+
+### 🤗 Downloading models from HuggingFace
+
+![hffs.gif](hffs.gif)
+
+When you launch with `python run_gradio.py`, it will:
+
+1. First check if the `models` folder has any model downloaded.
+2. If there is a model, it will launch the full UI with that model loaded.
+3. If the models folder is empty, it will launch a HFFS (HuggingFace downloader) UI, where you can either select from the preset models, or enter any HuggingFace repo id to download. (After downloading a model, you will need to restart the app to launch the full UI).
+4. To customize the preset models that appear in the downloader dropdown, edit the `config.json` file to add more entries to the `hffs[0].options` array.
 
 ## 🛠️ Advanced Usage
 
