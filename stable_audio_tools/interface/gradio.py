@@ -37,42 +37,67 @@ model = None
 sample_rate = 32000
 sample_size = 1920000
 DEVICE = None
+global_model_half = False
 
 output_directory = config['generations_directory']
 
 # Ensure the output directory exists
 os.makedirs(output_directory, exist_ok=True)
 
-def load_model(model_config=None, model_ckpt_path=None, pretrained_name=None, pretransform_ckpt_path=None, device="cuda", model_half=False):
-    global model, sample_rate, sample_size
-
+def load_model(model_config=None, model_ckpt_path=None, pretrained_name=None, pretransform_ckpt_path=None, device=None):
+    global model, sample_rate, sample_size, global_model_half
+    
     if pretrained_name is not None:
         print(f"Loading pretrained model {pretrained_name}")
         model, model_config = get_pretrained_model(pretrained_name)
-
     elif model_config is not None and model_ckpt_path is not None:
         print(f"Creating model from config")
         model = create_model_from_config(model_config)
-
-        print(f"Loading model checkpoint from {model_ckpt_path}")
+        
         # Load checkpoint
-        copy_state_dict(model, load_ckpt_state_dict(model_ckpt_path))
-
+        state_dict = load_ckpt_state_dict(model_ckpt_path)
+        
+        # Check if the model is in float16 format before loading into the model
+        is_float16 = all(param.dtype == torch.float16 for param in state_dict.values())
+        
+        if is_float16:
+            print("Model is in float16 format. Enabling half-precision inference.")
+            global_model_half = True
+            model.to(torch.float16)  # Convert the model to half precision before loading state dict
+        else:
+            print("Model is in full precision format.")
+            global_model_half = False
+        
+        model.load_state_dict(state_dict)
+        
+        # Print parameter types after loading into the model
+        #print("Parameter types after loading into the model:")
+        #for name, param in model.named_parameters():
+        #    print(f"Parameter {name} has dtype {param.dtype}")
+    
     sample_rate = model_config["sample_rate"]
     sample_size = model_config["sample_size"]
-
+    
     if pretransform_ckpt_path is not None:
         print(f"Loading pretransform checkpoint from {pretransform_ckpt_path}")
-        model.pretransform.load_state_dict(load_ckpt_state_dict(pretransform_ckpt_path), strict=False)
-        print(f"Done loading pretransform")
-
+        pretransform_state_dict = load_ckpt_state_dict(pretransform_ckpt_path)
+        
+        # Check if the pretransform model is in float16 format before loading into the pretransform model
+        is_float16_pretransform = all(param.dtype == torch.float16 for param in pretransform_state_dict.values())
+        
+        if is_float16_pretransform:
+            print("Model is in float16 format. Enabling half-precision inference.")
+            model.pretransform.to(torch.float16)  # Convert the pretransform model to half precision before loading state dict
+        else:
+            print("Model is in full precision format.")
+        
+        model.pretransform.load_state_dict(pretransform_state_dict, strict=False)
+        #print(f"Done loading pretransform")
+    
+    # Move the model to the specified device
     model.to(device).eval().requires_grad_(False)
-
-    if model_half:
-        model.to(torch.float16)
-
+    
     print(f"Done loading model")
-
     return model, model_config
 
 def calculate_seconds_total(bars, bpm):
@@ -290,7 +315,12 @@ def generate_cond(
         midi_output_path = None
         piano_roll_path = None
 
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+
     return (trimmed_file_path, [audio_spectrogram, *preview_images], piano_roll_path, midi_output_path)
+
 
 
 def get_models_and_configs(models_path):
@@ -329,15 +359,14 @@ def load_model_action(selected_ckpt, selected_config, ckpt_files):
         model, model_config = load_model(
             model_config=json.load(open(config_path)),
             model_ckpt_path=ckpt_path,
-            device=DEVICE,
-            model_half=False
+            device=DEVICE
         )
         
         return f"Loaded model {selected_ckpt} with config {selected_config}"
     except Exception as e:
         print(f"Error loading model: {e}")
         return f"Error loading model: {e}"
-
+    
 def generate_random_filename():
     piano_types = ["Soft E. Piano", "Medium E. Piano", "Grand Piano"]
     tremolo_effects = ["Low Tremolo", "Medium Tremolo", "High Tremolo", "No Tremolo"]
@@ -492,7 +521,7 @@ def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
                     ]
             else:
                 # Default generation tab
-                with gr.Accordion("Init audio", open=False):
+                with gr.Accordion("Init audio (Use 16 bit .WAV files - Full Precision Models Only)", open=False):
                     init_audio_checkbox = gr.Checkbox(label="Use init audio")
                     init_audio_input = gr.Audio(label="Init audio")
                     init_noise_level_slider = gr.Slider(minimum=0.1, maximum=100.0, step=0.01, value=0.1, label="Init noise level")
@@ -710,6 +739,9 @@ def create_lm_ui(model_config):
     return ui
 
 def create_ui(model_config_path=None, ckpt_path=None, pretrained_name=None, pretransform_ckpt_path=None, model_half=False):
+    global global_model_half
+    global_model_half = model_half  # Initialize model_half with the provided value
+
     if pretrained_name is None and model_config_path is None and ckpt_path is None:
         print("checking the models folder for a default checkpoint")
         try:
@@ -718,7 +750,7 @@ def create_ui(model_config_path=None, ckpt_path=None, pretrained_name=None, pret
             configs = get_config_files(ckpt_path)
             model_config_path = os.path.join(os.path.dirname(ckpt_path), configs[0])
         except IndexError:
-            print("no default checkpoint.") 
+            print("no default checkpoint.")
             with gr.Blocks() as ui:
                 gr.HTML("<h2>Initialize</h2><div>Download a model first, and restart the app.</div>")
                 hffs.from_config(config)
@@ -751,8 +783,8 @@ def create_ui(model_config_path=None, ckpt_path=None, pretrained_name=None, pret
 
     initial_ckpt = ckpt_path if ckpt_path is not None else pretrained_name
 
-    _, model_config = load_model(model_config, ckpt_path, pretrained_name=pretrained_name, pretransform_ckpt_path=pretransform_ckpt_path, model_half=model_half, device=device)
-    
+    _, model_config = load_model(model_config, ckpt_path, pretrained_name=pretrained_name, pretransform_ckpt_path=pretransform_ckpt_path, device=device)
+
     model_type = model_config["model_type"]
 
     if model_type == "diffusion_cond":
@@ -765,6 +797,5 @@ def create_ui(model_config_path=None, ckpt_path=None, pretrained_name=None, pret
         ui = create_diffusion_prior_ui(model_config)
     elif model_type == "lm":
         ui = create_lm_ui(model_config)
-        
-    return ui
 
+    return ui
