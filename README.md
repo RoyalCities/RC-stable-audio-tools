@@ -161,7 +161,7 @@ For detailed instructions on training and inference commands, flags, and additio
 
 ---
 
-I did my best to make sure the code is OS agnostic but I've only been able to test this with Windows / NVIDIA. Hopefully it works for other operating systems. 
+~~I did my best to make sure the code is OS agnostic but I've only been able to test this with Windows / NVIDIA. Hopefully it works for other operating systems.~~ The project now fully supports macOS and Apple Silicon (M1 and above). Special thanks to [@cocktailpeanut](https://github.com/cocktailpeanut) for their help!
 
 If theres any other features or tooling that you may want let me know on here or by contacting me on [Twitter](https://x.com/RoyalCities). I'm just a hobbyist but if it can be done I'll see what I can do.
 
