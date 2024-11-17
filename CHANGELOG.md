@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.2] - 2024-11-16
+###Added
+
+- updated autoencoder so 16 bit models should now be able to do init audio / AI style transfers.
+
 ## [1.1.1] - 2024-11-16
 ###Added 
 
