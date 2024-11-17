@@ -273,7 +273,6 @@ class AudioAutoencoder(nn.Module):
         self.is_discrete = self.bottleneck is not None and self.bottleneck.is_discrete
 
     def encode(self, audio, return_info=False, skip_pretransform=False, iterate_batch=False, **kwargs):
-
         info = {}
 
         if self.pretransform is not None and not skip_pretransform:
@@ -295,6 +294,10 @@ class AudioAutoencoder(nn.Module):
                     else:
                         audio = self.pretransform.encode(audio)
 
+        # Ensure that audio is in the same dtype as the model parameters - for 16 bit audio to audio support
+        dtype = next(self.parameters()).dtype
+        audio = audio.to(dtype)
+
         if self.encoder is not None:
             if iterate_batch:
                 latents = []
@@ -309,14 +312,13 @@ class AudioAutoencoder(nn.Module):
         if self.bottleneck is not None:
             # TODO: Add iterate batch logic, needs to merge the info dicts
             latents, bottleneck_info = self.bottleneck.encode(latents, return_info=True, **kwargs)
-
             info.update(bottleneck_info)
-        
+
         if return_info:
             return latents, info
 
         return latents
-
+    
     def decode(self, latents, iterate_batch=False, **kwargs):
 
         if self.bottleneck is not None:

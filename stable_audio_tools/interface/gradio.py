@@ -529,7 +529,7 @@ def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
                     ]
             else:
                 # Default generation tab
-                with gr.Accordion("Init audio - Full Precision Models Only)", open=False):
+                with gr.Accordion("Init audio)", open=False):
                     init_audio_checkbox = gr.Checkbox(label="Use init audio")
                     init_audio_input = gr.Audio(label="Init audio")
                     init_noise_level_slider = gr.Slider(minimum=0.1, maximum=100.0, step=0.01, value=0.1, label="Init noise level")
