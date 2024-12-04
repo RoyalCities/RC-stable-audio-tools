@@ -1,12 +1,17 @@
 # Changelog
 
+## [1.2] - 2024-12-04
+### Added
+- Better random prompt managment.
+- Key Signatures are now tied to UI rather than prompt and can be locked or unlocked similiar to BPM.
+
 ## [1.1.2] - 2024-11-16
-###Added
+### Added
 
 - updated autoencoder so 16 bit models should now be able to do init audio / AI style transfers.
 
 ## [1.1.1] - 2024-11-16
-###Added 
+### Added 
 
 - Support for non-16bit audio input in gradio interface
 

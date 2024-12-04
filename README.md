@@ -23,6 +23,12 @@
   <img src="https://i.imgur.com/hcedPl5.png" alt="BPM and Bar Example Gif" width="50%">
 </p>
 
+- **Key Signature Locking**: Key signature is now tied to UI and can be locked or unlocked with the random prompt button.
+
+<p align="center">
+  <img src="https://i.imgur.com/7IXXDSZ.jpeg" alt="Key Signature Image" width="50%">
+</p>
+
 - **Automatic Sample to MIDI Converter**: The fork will automatically convert all generated samples to .MID format, enabling users to have an infinite source of MIDI.
 
 <p align="center">

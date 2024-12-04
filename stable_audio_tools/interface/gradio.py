@@ -10,6 +10,8 @@ import torchaudio
 import random
 import hffs
 
+
+
 from aeiou.viz import audio_spectrogram_image
 from einops import rearrange
 from safetensors.torch import load_file
@@ -23,6 +25,7 @@ from ..models.pretrained import get_pretrained_model
 from ..models.utils import load_ckpt_state_dict
 from ..inference.utils import prepare_audio
 from ..training.utils import copy_state_dict
+from .prompts import master_prompt_map
 
 import pretty_midi
 import matplotlib.pyplot as plt
@@ -40,6 +43,8 @@ DEVICE = None
 global_model_half = False
 
 output_directory = config['generations_directory']
+
+current_prompt_generator = master_prompt_map.default_prompt_generator
 
 # Ensure the output directory exists
 os.makedirs(output_directory, exist_ok=True)
@@ -104,8 +109,8 @@ def calculate_seconds_total(bars, bpm):
     bar_duration = 60 / bpm * 4
     return bar_duration * bars
 
-def amend_prompt(prompt, bars, bpm):
-    return f"{prompt}, {bars} bars, {bpm}BPM,"
+def amend_prompt(prompt, note, scale, bars, bpm):
+    return f"{prompt}, {note} {scale}, {bars} bars, {bpm}BPM,"
 
 def convert_audio_to_midi(audio_path, output_dir):
     predict_and_save(
@@ -136,6 +141,8 @@ def generate_cond(
         negative_prompt=None,
         bars=4,
         bpm=100,
+        note='C',
+        scale='major',
         cfg_scale=6.0,
         steps=250,
         preview_every=None,
@@ -162,7 +169,7 @@ def generate_cond(
         torch.cuda.empty_cache()
     gc.collect()
 
-    amended_prompt = amend_prompt(prompt, bars, bpm)
+    amended_prompt = amend_prompt(prompt, note, scale, bars, bpm)
     print(f"Prompt: {amended_prompt}")
 
     global preview_images
@@ -194,8 +201,7 @@ def generate_cond(
 
     if init_audio is not None:
         in_sr, init_audio = init_audio
-        
-        # Turn into torch tensor, converting to float32 # Non-16bit audio support added from PR #157 by lyramakesmusic
+        # Turn into torch tensor, converting to float32 (Non-16bit code via PR #157 by @lyramakesmusic)
         if init_audio.dtype == np.float32:
             init_audio = torch.from_numpy(init_audio)
         elif init_audio.dtype == np.int16:
@@ -359,7 +365,7 @@ def update_config_dropdown(selected_ckpt, ckpt_files):
         return gr.update(choices=["Error finding configs"], value="Error finding configs")
 
 def load_model_action(selected_ckpt, selected_config, ckpt_files):
-    global DEVICE
+    global DEVICE, current_prompt_generator
     try:
         ckpt_path = next(path for name, path in ckpt_files if name == selected_ckpt)
         config_path = os.path.join(os.path.dirname(ckpt_path), selected_config)
@@ -370,53 +376,15 @@ def load_model_action(selected_ckpt, selected_config, ckpt_files):
             device=DEVICE
         )
         
+        # Get the prompt generator based on the model filename
+        current_prompt_generator = master_prompt_map.get_prompt_generator(selected_ckpt)
+        
         return f"Loaded model {selected_ckpt} with config {selected_config}"
     except Exception as e:
         print(f"Error loading model: {e}")
         return f"Error loading model: {e}"
     
-def generate_random_filename():
-    piano_types = ["Soft E. Piano", "Medium E. Piano", "Grand Piano"]
-    tremolo_effects = ["Low Tremolo", "Medium Tremolo", "High Tremolo", "No Tremolo"]
-    non_tremolo_effects = ["No Reverb", "Low Reverb", "Medium Reverb", "High Reverb", "High Spacey Reverb"]
 
-    chord_progressions = ["simple", "complex", "dance plucky", "fast", "jazzy", "low", "simple strummed", "rising strummed", "complex strummed", "jazzy strummed", "slow strummed", "plucky dance",
-                          "rising", "falling", "slow", "slow jazzy", "fast jazzy", "smooth", "strummed", "plucky"]
-    melodies = [
-        "catchy melody", "complex melody", "complex top melody", "catchy top melody", "top melody", "smooth melody", "catchy complex melody",
-        "jazzy melody", "smooth catchy melody", "plucky dance melody", "dance melody", "alternating low melody", "alternating top arp melody", "alternating top melody", "top arp melody", "alternating melody", "falling arp melody",
-        "rising arp melody", "top catchy melody"
-    ]
-    notes = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"]
-    scales = ["major,", "minor,"]
-
-    # Choose the piano type first to ensure an even split
-    piano = random.choice(piano_types)
-
-    # Choose effect based on piano type
-    if piano == "Grand Piano":
-        effect = random.choice(non_tremolo_effects)
-    else:
-        effect = random.choice(tremolo_effects + non_tremolo_effects)
-
-    note = random.choice(notes)
-    scale = random.choice(scales)
-
-    # Decide category for generation
-    category_choice = random.choice(["chord progression only", "chord progression with melody", "melody only"])
-    
-    if category_choice == "chord progression only":
-        chord_progression = random.choice(chord_progressions) + " chord progression only,"
-        descriptor = f"{piano}, {chord_progression} {note} {scale} {effect}"
-    elif category_choice == "chord progression with melody":
-        chord_progression = random.choice(chord_progressions) + " chord progression,"
-        melody = "with " + random.choice(melodies) + ","
-        descriptor = f"{piano}, {chord_progression} {melody} {note} {scale} {effect}"
-    else:
-        melody = random.choice(melodies) + " only,"
-        descriptor = f"{piano}, {melody} {note} {scale} {effect}"
-
-    return descriptor
 
 def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
     ckpt_files = get_models_and_configs(config['models_directory'])
@@ -448,21 +416,31 @@ def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
         with gr.Column():
             current_model_info = gr.Markdown(f"Current Model: {selected_ckpt.value}")
             
-            # comment out the model and config dropdowns / load model button for demos
+            # Comment out the model and config dropdowns / load model button for demos
             with gr.Row():
                 # Model and Config dropdowns
                 model_dropdown = gr.Dropdown(["Select Model"] + [file[0] for file in ckpt_files], label="Select Model")
                 config_dropdown = gr.Dropdown(["Select Config"], label="Select Config")
             
-            load_model_button = gr.Button("Load Model")
-
             model_dropdown.change(fn=lambda x: update_config_dropdown(x, ckpt_files), inputs=model_dropdown, outputs=config_dropdown)
+
+            load_model_button = gr.Button("Load Model")
 
             lock_bpm_checkbox = gr.Checkbox(label="Lock BPM Settings", value=True)
             with gr.Row(visible=has_seconds_start or has_seconds_total):
                 bars_dropdown = gr.Dropdown([4, 8], label="Bars", value=8, visible=has_seconds_total)  # Set default value here
-                bpm_dropdown = gr.Dropdown([100, 110, 120, 128, 130, 140, 145, 150], label="BPM", value=128, visible=has_seconds_total)  # Set default value here
-                
+                bpm_dropdown = gr.Dropdown([100, 110, 120, 128, 130, 140, 150], label="BPM", value=128, visible=has_seconds_total)  # Set default value here
+
+            # Add the Lock Key Signature checkbox and key signature dropdowns
+            lock_key_checkbox = gr.Checkbox(label="Lock Key Signature", value=True)
+            with gr.Row():
+                note_dropdown = gr.Dropdown(
+                    ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"],
+                    label="Key",
+                    value="F"
+                )
+                scale_dropdown = gr.Dropdown(["major", "minor"], label="Scale", value="minor")
+
             with gr.Row():
                 # Steps slider
                 steps_slider = gr.Slider(minimum=1, maximum=500, step=1, value=100, label="Steps")
@@ -503,62 +481,68 @@ def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
                     mask_softnessR_slider = gr.Slider(minimum=0.0, maximum=100.0, step=0.1, value=0, label="Softmask Right Crossfade Length %")
                     mask_marination_slider = gr.Slider(minimum=0.0, maximum=1, step=0.0001, value=0, label="Marination level", visible=False)  # still working on the usefulness of this
 
-                    inputs = [prompt,
-                        negative_prompt,
-                        bars_dropdown,
-                        bpm_dropdown,
-                        cfg_scale_slider,
-                        steps_slider,
-                        preview_every_slider,
-                        seed_textbox,
-                        sampler_type_dropdown,
-                        sigma_min_slider,
-                        sigma_max_slider,
-                        cfg_rescale_slider,
-                        init_audio_checkbox,
-                        init_audio_input,
-                        init_noise_level_slider,
-                        mask_cropfrom_slider,
-                        mask_pastefrom_slider,
-                        mask_pasteto_slider,
-                        mask_maskstart_slider,
-                        mask_maskend_slider,
-                        mask_softnessL_slider,
-                        mask_softnessR_slider,
-                        mask_marination_slider
-                    ]
-            else:
-                # Default generation tab
-                with gr.Accordion("Init audio)", open=False):
-                    init_audio_checkbox = gr.Checkbox(label="Use init audio")
-                    init_audio_input = gr.Audio(label="Init audio")
-                    init_noise_level_slider = gr.Slider(minimum=0.1, maximum=100.0, step=0.01, value=0.1, label="Init noise level")
-
-                    inputs = [prompt,
-                        negative_prompt,
-                        bars_dropdown,
-                        bpm_dropdown,
-                        cfg_scale_slider,
-                        steps_slider,
-                        preview_every_slider,
-                        seed_textbox,
-                        sampler_type_dropdown,
-                        sigma_min_slider,
-                        sigma_max_slider,
-                        cfg_rescale_slider,
-                        init_audio_checkbox,
-                        init_audio_input,
-                        init_noise_level_slider
-                    ]
+            # Do not define the inputs here; we'll define them after all UI elements are created
 
         with gr.Column():
             audio_output = gr.Audio(label="Output audio", interactive=False)
-            audio_spectrogram_output = gr.Gallery(label="Output spectrogram", show_label=False)
-            send_to_init_button = gr.Button("Send to init audio", scale=1)
+            send_to_init_button = gr.Button("Send to Style Transfer", scale=1)
+            with gr.Accordion("AI Style Transfer", open=False):
+                init_audio_checkbox = gr.Checkbox(label="Use for Style Transfer")
+                init_audio_input = gr.Audio(label="Input audio")
+                init_noise_level_slider = gr.Slider(minimum=0.1, maximum=5.0, step=0.01, value=0.9, label="Init noise level")
 
         with gr.Column():
             midi_piano_roll_output = gr.Image(label="MIDI Piano Roll", interactive=False)
             midi_download_button = gr.File(label="Download MIDI", file_count="single", type="filepath", interactive=False)
+            audio_spectrogram_output = gr.Gallery(label="Output spectrogram", show_label=False)
+
+    # Now define the inputs list after all UI elements are created
+    if inpainting:
+        inputs = [prompt,
+            negative_prompt,
+            bars_dropdown,
+            bpm_dropdown,
+            note_dropdown,
+            scale_dropdown,
+            cfg_scale_slider,
+            steps_slider,
+            preview_every_slider,
+            seed_textbox,
+            sampler_type_dropdown,
+            sigma_min_slider,
+            sigma_max_slider,
+            cfg_rescale_slider,
+            init_audio_checkbox,
+            init_audio_input,
+            init_noise_level_slider,
+            mask_cropfrom_slider,
+            mask_pastefrom_slider,
+            mask_pasteto_slider,
+            mask_maskstart_slider,
+            mask_maskend_slider,
+            mask_softnessL_slider,
+            mask_softnessR_slider,
+            mask_marination_slider
+        ]
+    else:
+        inputs = [prompt,
+            negative_prompt,
+            bars_dropdown,
+            bpm_dropdown,
+            note_dropdown,
+            scale_dropdown,
+            cfg_scale_slider,
+            steps_slider,
+            preview_every_slider,
+            seed_textbox,
+            sampler_type_dropdown,
+            sigma_min_slider,
+            sigma_max_slider,
+            cfg_rescale_slider,
+            init_audio_checkbox,
+            init_audio_input,
+            init_noise_level_slider
+        ]
 
     generate_button.click(fn=generate_cond,
         inputs=inputs,
@@ -575,21 +559,42 @@ def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
     # Comment out the load model button click event
     load_model_button.click(fn=lambda x, y: load_model_action(x, y, ckpt_files), inputs=[model_dropdown, config_dropdown], outputs=[current_model_info])
 
-    def update_prompt(prompt, lock_bpm, bars, bpm):
-        new_prompt = generate_random_filename()
-        # Preserve the original bars and bpm in the prompt only if lock_bpm is True
-        if lock_bpm:
-            return new_prompt, bars, bpm
-        else:
-            # Randomize bars and bpm if not locked
+    def update_prompt(prompt, lock_bpm, bars, bpm, lock_key, note, scale):
+        # Use current_prompt_generator to generate the new prompt
+        new_prompt = current_prompt_generator()
+        
+        # Handle BPM and bars
+        if not lock_bpm:
             bars = random.choice([4, 8])
             bpm = random.choice([100, 110, 120, 128, 130, 140, 150])
-            return new_prompt, bars, bpm
+        
+        # Handle key signature
+        if not lock_key:
+            note = random.choice(["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"])
+            scale = random.choice(["major", "minor"])
+        
+        return new_prompt, bars, bpm, note, scale
 
+
+    # Update the random_prompt_button click event
     random_prompt_button.click(
         fn=update_prompt,
-        inputs=[prompt, lock_bpm_checkbox, bars_dropdown, bpm_dropdown],
-        outputs=[prompt, bars_dropdown, bpm_dropdown]
+        inputs=[
+            prompt,
+            lock_bpm_checkbox,
+            bars_dropdown,
+            bpm_dropdown,
+            lock_key_checkbox,
+            note_dropdown,
+            scale_dropdown
+        ],
+        outputs=[
+            prompt,
+            bars_dropdown,
+            bpm_dropdown,
+            note_dropdown,
+            scale_dropdown
+        ]
     )
 
 
@@ -748,6 +753,7 @@ def create_lm_ui(model_config):
 
 def create_ui(model_config_path=None, ckpt_path=None, pretrained_name=None, pretransform_ckpt_path=None, model_half=False):
     global global_model_half
+    global current_prompt_generator
     global_model_half = model_half  # Initialize model_half with the provided value
 
     if pretrained_name is None and model_config_path is None and ckpt_path is None:
@@ -792,6 +798,9 @@ def create_ui(model_config_path=None, ckpt_path=None, pretrained_name=None, pret
     initial_ckpt = ckpt_path if ckpt_path is not None else pretrained_name
 
     _, model_config = load_model(model_config, ckpt_path, pretrained_name=pretrained_name, pretransform_ckpt_path=pretransform_ckpt_path, device=device)
+
+    # Set current_prompt_generator based on the initial model
+    current_prompt_generator = master_prompt_map.get_prompt_generator(os.path.basename(initial_ckpt))
 
     model_type = model_config["model_type"]
 
