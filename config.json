@@ -6,7 +6,8 @@
         "options": [
             "RoyalCities/RC_Infinite_Pianos",
             "cocktailpeanut/stable-audio-open-1.0",
-            "RoyalCities/Vocal_Textures_Main"
+            "RoyalCities/Vocal_Textures_Main",
+            "adlb/Audialab_EDM_Elements"
         ]
     }]
 }

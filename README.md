@@ -10,7 +10,7 @@
 </p>
 
 
-- **Random Prompt Button**: A one-click Random Prompt button presently tuned to my [Infinite Pianos Finetune](https://huggingface.co/RoyalCities/RC_Infinite_Pianos) - as more models are released this will be expanded.
+- **Random Prompt Button**: A one-click Random Prompt button tied directly onto the loaded models metadata.
 
 <p align="center">
   <img src="https://i.imgur.com/fNEE8cR.gif" alt="Random Prompt Button Gif" width="95%">
