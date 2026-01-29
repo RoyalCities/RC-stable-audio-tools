@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3] - 2026-01-28
+### Added
+- TorchAO Quantization support (Windows / Linux)
+- Improved Gradio workflow
+- Synced with upstream Stable Audio Tools
+
 ## [1.2] - 2024-12-04
 ### Added
 - Better random prompt managment.
