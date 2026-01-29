@@ -90,6 +90,27 @@ pip uninstall -y torch torchvision torchaudio
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 ```
 
+### 🧪 Optional (Windows / Linux): INT4 / Low-VRAM Mode (TorchAO)
+
+This fork supports **optional** INT4 weight-only inference via TorchAO.  
+It can reduce VRAM usage further, but it can be **very slow on Windows** because Triton fast-kernels are usually unavailable (falls back to slower paths). 
+
+To enable the INT4 toggle in the UI:
+
+**Windows (recommended, pinned):**
+```bash
+pip install torchao==0.12.0
+```
+
+**Linux:**
+```bash
+pip install torchao
+```
+
+⚠️ On Linux, using the unpinned version may require some tweaking depending on your CUDA, PyTorch, and driver versions. 
+
+If TorchAO isn’t installed or compatible with your environment, the INT4 toggle will remain hidden/disabled.
+
 ## ⚙️ Configuration
 
 A sample `config.json` is included in the root directory. Customize it to specify directories for custom models and outputs (.wav and .mid files will be stored here):

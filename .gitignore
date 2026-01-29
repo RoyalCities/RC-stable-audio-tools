@@ -163,3 +163,16 @@ cython_debug/
 *.wav
 wandb/*
 *.mid
+*.safetensors
+*.png
+*.mp3
+
+# --- keep folder, ignore anything else other than explainers ---
+generations/*
+!generations/*.txt
+
+models/*
+!models/*.txt
+
+venv_upstream_style/
+
