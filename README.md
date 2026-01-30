@@ -52,7 +52,11 @@ git clone https://github.com/RoyalCities/RC-stable-audio-tools.git
 cd RC-stable-audio-tools
 ```
 
-### 🔧 Setup the Environment
+### 🔧 Setup the Environment 
+
+#### ✅ Python Version (Important)
+
+Use **Python 3.10**. Newer versions (e.g. 3.11+) can fail dependency resolution due to pinned packages (notably older SciPy wheels).
 
 #### 🌐 Create a Virtual Environment
 
