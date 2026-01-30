@@ -34,6 +34,7 @@ setup(
         'safetensors',
         'sentencepiece<=0.1.99',
         's3fs',
+        'soxr',
         'scipy==1.8.1', 
         'torch>=2.0.1',
         'torchaudio>=2.0.2',
