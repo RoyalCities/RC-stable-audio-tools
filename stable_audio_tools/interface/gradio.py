@@ -10,6 +10,8 @@ import torchaudio
 import random
 import hffs
 import math
+import re
+
 
 
 from aeiou.viz import audio_spectrogram_image
@@ -56,6 +58,27 @@ LAST_MODEL_CONFIG = None
 
 # torchao int preset
 TORCHAO_WBITS = 4   
+
+# --- Foundation prompt modes (user-facing) ---
+FOUNDATION_MODE_SIMPLE = "Simple"
+FOUNDATION_MODE_EXPERIMENTAL = "Experimental"
+
+FOUNDATION_MODE_TO_VARIANT = {
+    FOUNDATION_MODE_SIMPLE: "M1",          
+    FOUNDATION_MODE_EXPERIMENTAL: "T1",    
+}
+
+FOUNDATION_MODE_HELP = {
+    FOUNDATION_MODE_SIMPLE: (
+        "`Predictable Prompts - less timbre-mix/chaos`"
+    ),
+    FOUNDATION_MODE_EXPERIMENTAL: (
+        "`Adventurous Prompts - more timbre-mix`"
+    ),
+}
+
+
+
 
 
 
@@ -127,7 +150,7 @@ def _build_weight_only_cfg(wbits: int, group_size: int = 128):
 
     if wbits == 4:
         from torchao.quantization import Int4WeightOnlyConfig as Cfg
-        # int4 signatures vary; keep your multi-try approach
+        # int4 signatures vary; multi-try approach
         for kwargs in (
             dict(group_size=group_size, use_hqq=True, version=1),
             dict(group_size=group_size, use_hqq=True),
@@ -191,7 +214,7 @@ def runtime_status_md() -> str:
             dtype = "n/a"
 
     int4_avail = TORCHAO_INT4_SUPPORTED
-    int4_state = "✅ on" if INT4_ENABLED else ("available" if int4_avail else "unavailable")
+    int4_state = "on" if INT4_ENABLED else ("available" if int4_avail else "unavailable")
 
     name = LAST_CKPT_NAME or "n/a"
     return (
@@ -301,9 +324,9 @@ def torchao_backend_status():
         ver = getattr(torchao, "__version__", "unknown")
         try:
             import torchao._C  # compiled extension (fast path indicator)
-            return True, "torchao._C: ✅ compiled extension loaded", ver
+            return True, "torchao._C: compiled extension loaded", ver
         except Exception as e:
-            return False, f"torchao._C: ❌ no compiled extension ({e})", ver
+            return False, f"torchao._C: no compiled extension ({e})", ver
     except Exception as e:
         return False, f"torchao import failed: {e}", "n/a"
 
@@ -655,12 +678,43 @@ def load_model_action(selected_ckpt, selected_config, ckpt_files, int4_requested
 
         current_prompt_generator = master_prompt_map.get_prompt_generator(selected_ckpt)
 
+        is_foundation = bool(re.search(r"foundation", selected_ckpt or "", re.IGNORECASE))
+
         info = f"Loaded model {selected_ckpt} with config {selected_config}"
-        return info, runtime_status_md()
+
+        if is_foundation:
+            mode = FOUNDATION_MODE_SIMPLE
+            return (
+                info,
+                runtime_status_md(),
+                gr.update(visible=True),               # <-- foundation_mode_group
+                gr.update(value=True),                 # simple
+                gr.update(value=False),                # experimental
+                gr.update(value=FOUNDATION_MODE_HELP[mode]),
+                True,
+            )
+        else:
+            return (
+                info,
+                runtime_status_md(),
+                gr.update(visible=False),              # <-- foundation_mode_group
+                gr.update(value=True),
+                gr.update(value=False),
+                gr.update(value=""),
+                False,
+            )
 
     except Exception as e:
         print(f"Error loading model: {e}")
-        return f"Error loading model: {e}", runtime_status_md()
+        return (
+            f"Error loading model: {e}",
+            runtime_status_md(),
+            gr.update(visible=False),             # <-- foundation_mode_row
+            gr.update(visible=False, value=True),
+            gr.update(visible=False, value=False),
+            gr.update(visible=False, value=""),
+            False,
+        )
 
 
 
@@ -668,16 +722,86 @@ def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
     ckpt_files = get_models_and_configs(config['models_directory'])
     selected_ckpt = gr.State(value=os.path.basename(initial_ckpt))
     selected_config = gr.State()
+    is_foundation_initial = bool(re.search(r"foundation", os.path.basename(initial_ckpt or ""), re.IGNORECASE))
+    foundation_active = gr.State(value=is_foundation_initial)
 
-    with gr.Row():
-        with gr.Column(scale=8):  # Input fields take more space
-            prompt = gr.Textbox(show_label=False, placeholder="Prompt")
-            negative_prompt = gr.Textbox(show_label=False, placeholder="Negative prompt")
-        with gr.Column(scale=2):  # Buttons take less space
+    with gr.Row(elem_id="top_prompt_row"):
+        with gr.Column(scale=8, elem_id="prompt_left_col"):
+            prompt = gr.Textbox(show_label=False, placeholder="Prompt", elem_id="prompt_box", lines=4)
+            negative_prompt = gr.Textbox(show_label=False, placeholder="Negative prompt", visible=False, value="")
+
+        with gr.Column(scale=2):
             with gr.Column():
-                generate_button = gr.Button("Generate", variant='primary', scale=1)
-                random_prompt_button = gr.Button("Random Prompt", variant='secondary', scale=1)
+                generate_button = gr.Button("Generate", variant="primary", scale=1)
+                random_prompt_button = gr.Button("Random Prompt", variant="secondary", scale=1)
 
+                # wrapper that hides/shows everything, but looks seamless
+                with gr.Column(visible=is_foundation_initial, elem_id="foundation_mode_group") as foundation_mode_group:
+                    with gr.Row():
+                        foundation_simple_cb = gr.Checkbox(label="Simple", value=True)
+                        foundation_experimental_cb = gr.Checkbox(label="Experimental", value=False)
+
+                    foundation_mode_help = gr.Markdown(
+                        FOUNDATION_MODE_HELP[FOUNDATION_MODE_SIMPLE],
+                        elem_id="foundation_mode_help",
+                    )
+
+
+
+                def _toggle_simple(is_checked: bool):
+                    """
+                    If user checks Simple => turn off Experimental.
+                    If user unchecks Simple => force Experimental on (so one is always active).
+                    """
+                    if is_checked:
+                        mode = FOUNDATION_MODE_SIMPLE
+                        return (
+                            gr.update(value=True),
+                            gr.update(value=False),
+                            gr.update(value=FOUNDATION_MODE_HELP[mode], visible=True),
+                        )
+                    else:
+                        mode = FOUNDATION_MODE_EXPERIMENTAL
+                        return (
+                            gr.update(value=False),
+                            gr.update(value=True),
+                            gr.update(value=FOUNDATION_MODE_HELP[mode], visible=True),
+                        )
+
+                def _toggle_experimental(is_checked: bool):
+                    """
+                    If user checks Experimental => turn off Simple.
+                    If user unchecks Experimental => force Simple on.
+                    """
+                    if is_checked:
+                        mode = FOUNDATION_MODE_EXPERIMENTAL
+                        return (
+                            gr.update(value=False),
+                            gr.update(value=True),
+                            gr.update(value=FOUNDATION_MODE_HELP[mode], visible=True),
+                        )
+                    else:
+                        mode = FOUNDATION_MODE_SIMPLE
+                        return (
+                            gr.update(value=True),
+                            gr.update(value=False),
+                            gr.update(value=FOUNDATION_MODE_HELP[mode], visible=True),
+                        )
+
+                foundation_simple_cb.change(
+                    fn=_toggle_simple,
+                    inputs=[foundation_simple_cb],
+                    outputs=[foundation_simple_cb, foundation_experimental_cb, foundation_mode_help],
+                )
+
+                foundation_experimental_cb.change(
+                    fn=_toggle_experimental,
+                    inputs=[foundation_experimental_cb],
+                    outputs=[foundation_simple_cb, foundation_experimental_cb, foundation_mode_help],
+                )
+
+
+    
     model_conditioning_config = model_config["model"].get("conditioning", None)
 
     has_seconds_start = False
@@ -875,11 +999,33 @@ def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
     load_model_button.click(
         fn=lambda x, y, q: load_model_action(x, y, ckpt_files, q),
         inputs=[model_dropdown, config_dropdown, int4_for_load],
-        outputs=[current_model_info, status_md]
+        outputs=[
+            current_model_info,
+            status_md,
+            foundation_mode_group,   
+            foundation_simple_cb,
+            foundation_experimental_cb,
+            foundation_mode_help,
+            foundation_active,
+        ]
     )
 
-    def update_prompt(prompt, lock_bpm, bars, bpm, lock_key, note, scale):
-        new_prompt = current_prompt_generator()
+
+    def update_prompt(prompt, lock_bpm, bars, bpm, lock_key, note, scale, seed_str,
+                    simple_cb, experimental_cb, is_foundation_active):
+
+        if is_foundation_active:
+            mode = FOUNDATION_MODE_EXPERIMENTAL if experimental_cb else FOUNDATION_MODE_SIMPLE
+            variant = FOUNDATION_MODE_TO_VARIANT[mode]
+
+            new_prompt = current_prompt_generator(
+                seed=seed_str,  
+                variant=variant,
+                mode="standard",
+                allow_timbre_mix=(mode == FOUNDATION_MODE_EXPERIMENTAL),
+            )
+        else:
+            new_prompt = current_prompt_generator()  
 
         if not lock_bpm:
             bars = random.choice([4, 8])
@@ -891,6 +1037,8 @@ def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
 
         return new_prompt, bars, bpm, note, scale
 
+
+
     random_prompt_button.click(
         fn=update_prompt,
         inputs=[
@@ -900,7 +1048,11 @@ def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
             bpm_dropdown,
             lock_key_checkbox,
             note_dropdown,
-            scale_dropdown
+            scale_dropdown,
+            seed_textbox,              
+            foundation_simple_cb,
+            foundation_experimental_cb,
+            foundation_active,
         ],
         outputs=[
             prompt,
@@ -912,13 +1064,76 @@ def create_sampling_ui(model_config, initial_ckpt, inpainting=False):
     )
 
 
-
 def create_txt2audio_ui(model_config, initial_ckpt):
-    with gr.Blocks() as ui:
+    css = """
+    /* Make the wrapper seamless (no panel look) */
+    #foundation_mode_group {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: visible !important;
+    }
+
+    /* Make the markdown itself seamless */
+    #foundation_mode_help {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin-top: 0.25rem !important;
+        overflow: visible !important;
+        max-height: none !important;
+        height: auto !important;
+    }
+
+    /* Gradio markdown inner wrapper(s) sometimes hold the scroll */
+    #foundation_mode_help .prose,
+    #foundation_mode_help > div {
+        overflow: visible !important;
+        max-height: none !important;
+        height: auto !important;
+    }
+
+    /* Text sizing (adjust these) */
+    #foundation_mode_help { font-size: 0.85rem; line-height: 1.2; }
+    #foundation_mode_help h3 { font-size: 0.95rem; margin: 0.15rem 0; }
+    #foundation_mode_help ul { margin: 0.15rem 0 0.15rem 1.0rem; }
+    
+    /* Make the top row stretch children to the tallest column */
+#top_prompt_row { align-items: stretch !important; }
+
+    /* Make the left column fill the row and behave like a vertical flex stack */
+    #prompt_left_col {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    }
+
+    /* Make the prompt component take all remaining vertical space in the left column */
+    #prompt_box {
+    flex: 1 1 auto !important;
+    min-height: 0 !important; /* important so it can shrink when right side shrinks */
+    }
+
+    /* Gradio wraps components; force wrappers to stretch too */
+    #prompt_box > .wrap {
+    height: 100% !important;
+    }
+
+    /* Make the actual textarea fill the component */
+    #prompt_box textarea {
+    height: 100% !important;
+    min-height: 0 !important;
+    resize: none; /* optional */
+    }
+        
+    """
+
+    with gr.Blocks(css=css) as ui:
         with gr.Tab("Generation"):
             create_sampling_ui(model_config, initial_ckpt)
-        # with gr.Tab("Inpainting"): removing for now no inpainting yet.
-        #     create_sampling_ui(model_config, initial_ckpt, inpainting=True)
         with gr.Tab("Download Models"):
             gr.HTML("<h2>Download</h2><div>Download a model and restart the app to apply.</div>")
             hffs.from_config(config)
@@ -1175,4 +1390,3 @@ def create_ui(
         raise ValueError(f"Unknown model_type: {model_type}")
 
     return ui
-
