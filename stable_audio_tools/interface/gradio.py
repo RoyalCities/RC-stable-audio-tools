@@ -11,6 +11,7 @@ import random
 import hffs
 import math
 import re
+import soundfile as sf
 
 
 
@@ -88,6 +89,22 @@ current_prompt_generator = master_prompt_map.default_prompt_generator
 
 # Ensure the output directory exists
 os.makedirs(output_directory, exist_ok=True)
+
+
+def save_audio_file(file_path: str, audio: torch.Tensor, sample_rate: int) -> None:
+    """Write audio without requiring torchcodec-backed torchaudio.save()."""
+    if not isinstance(audio, torch.Tensor):
+        raise TypeError(f"Expected a torch.Tensor, got {type(audio)!r}")
+
+    audio = audio.detach().cpu()
+    if audio.ndim == 1:
+        audio = audio.unsqueeze(0)
+    if audio.ndim != 2:
+        raise ValueError(f"Expected audio with shape [channels, samples], got {tuple(audio.shape)}")
+
+    audio_np = audio.transpose(0, 1).contiguous().numpy()
+    subtype = "PCM_16" if audio_np.dtype == np.int16 else None
+    sf.write(file_path, audio_np, sample_rate, subtype=subtype)
 
 def pick_preferred_dtype(device: torch.device) -> torch.dtype:
     """
@@ -372,6 +389,9 @@ def convert_audio_to_midi(audio_path, output_dir):
 def plot_piano_roll(pm, start_pitch, end_pitch, fs=100):
     plt.figure(figsize=(12, 6))
     piano_roll = pm.get_piano_roll(fs=fs)[start_pitch:end_pitch]
+    if piano_roll.size == 0 or piano_roll.shape[1] == 0:
+        plt.close()
+        return None
     librosa.display.specshow(piano_roll, hop_length=1, sr=fs, x_axis='time', y_axis='cqt_note',
                              fmin=pretty_midi.note_number_to_hz(start_pitch))
     plt.colorbar(format='%+2.0f dB')
@@ -577,7 +597,7 @@ def generate_cond(
     base_name = amended_prompt.replace(" ", "_").replace(",", "").replace(":", "").replace(";", "")
     file_path = get_unique_filename(base_name, seed, output_directory)
 
-    torchaudio.save(file_path, wav_i16, sample_rate)
+    save_audio_file(file_path, wav_i16, sample_rate)
 
     # ---------- MIDI conversion ----------
     try:
@@ -596,13 +616,16 @@ def generate_cond(
         if midi_output_path is not None:
             midi_data = pretty_midi.PrettyMIDI(midi_output_path)
             print("MIDI file loaded successfully.")
-            piano_roll_path = plot_piano_roll(midi_data, 21, 109)
+            try:
+                piano_roll_path = plot_piano_roll(midi_data, 21, 109)
+            except Exception as e:
+                print(f"Piano roll preview failed: {e}")
+                piano_roll_path = None
         else:
             piano_roll_path = None
 
     except Exception as e:
         print(f"An error occurred during MIDI conversion: {e}")
-        midi_output_path = None
         piano_roll_path = None
 
     if torch.cuda.is_available():
@@ -1187,7 +1210,7 @@ def autoencoder_process(audio, latent_noise, n_quantizers):
 
     audio = audio.to(torch.float32).clamp(-1, 1).mul(32767).to(torch.int16).cpu()
 
-    torchaudio.save("output.wav", audio, sample_rate)
+    save_audio_file("output.wav", audio, sample_rate)
 
     return "output.wav"
 
@@ -1236,7 +1259,7 @@ def diffusion_prior_process(audio, steps, sampler_type, sigma_min, sigma_max):
 
     audio = audio.to(torch.float32).div(torch.max(torch.abs(audio))).clamp(-1, 1).mul(32767).to(torch.int16).cpu()
 
-    torchaudio.save("output.wav", audio, sample_rate)
+    save_audio_file("output.wav", audio, sample_rate)
 
     return "output.wav"
 

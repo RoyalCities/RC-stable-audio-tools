@@ -8,6 +8,7 @@ import torch
 import torchaudio
 import threading 
 import os, time, math
+import soundfile as sf
 
 from einops import rearrange
 from torchaudio import transforms as T
@@ -21,6 +22,21 @@ sample_size = 2097152
 sample_rate = 44100
 model_half = True
 diffusion_objective = None
+
+
+def save_audio_file(file_path, audio, sample_rate):
+    if not isinstance(audio, torch.Tensor):
+        raise TypeError(f"Expected a torch.Tensor, got {type(audio)!r}")
+
+    audio = audio.detach().cpu()
+    if audio.ndim == 1:
+        audio = audio.unsqueeze(0)
+    if audio.ndim != 2:
+        raise ValueError(f"Expected audio with shape [channels, samples], got {tuple(audio.shape)}")
+
+    audio_np = audio.transpose(0, 1).contiguous().numpy()
+    subtype = "PCM_16" if audio_np.dtype == np.int16 else None
+    sf.write(file_path, audio_np, sample_rate, subtype=subtype)
 
 # when using a prompt in a filename
 def condense_prompt(prompt):
@@ -256,7 +272,7 @@ def generate_cond(
     audio = audio.to(torch.float32).div(torch.max(torch.abs(audio))).clamp(-1, 1).mul(32767).to(torch.int16).cpu()
 
     # save as wav file
-    torchaudio.save(output_wav, audio, sample_rate)
+    save_audio_file(output_wav, audio, sample_rate)
 
     # If file_format is other than wav, convert to other file format
     cmd = ""
