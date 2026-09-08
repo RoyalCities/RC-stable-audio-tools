@@ -1,1 +1,4 @@
-all generated .wavs and converted midi will appear here with their prompt + seed as the file name.
+All generated .wavs and converted midi will appear in their respective folders.
+Generated instruments will be contained inside of the Sampler_Exports folder broken down by sfz or DecentSampler file type.
+
+Keybed_Source contains raw sample data and is used in Keybed creation

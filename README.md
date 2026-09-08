@@ -41,6 +41,16 @@
   <img src="https://i.imgur.com/ApH5SOM.gif" alt="Midi Converter Example Gif" width="75%">
 </p>
 
+- **Model-Specific Prompt Builders**: Supported models can expose their own prompt-building controls and vocabularies. Random Prompt generation is synchronized with the builder controls so generated ideas can be adjusted manually afterward.
+
+- **One-Shot Generation**: A dedicated One Shot mode is available for generating individual sounds and samples. One Shot generation works best with models trained for one-shot support.
+
+- **Keybed Generation & Export**: Generate pitch-consistent keybeds across a playable range and export completed instruments to **DecentSampler** or **SFZ**. *Instrument Generation must be used with models trained for keybed support.*
+
+- **Layered Keybeds**: Build multi-layer instruments from up to three generated keybeds, with independent layer controls and shared global effects.
+
+- **Batch Generation**: Generate multiple loops or one-shots in a single run while using the same shared model runtime and prompt-building workflow as the main Generation interface.
+
 ## 🚀 Installation
 
 ### 📥 Clone the Repository
@@ -52,11 +62,7 @@ git clone https://github.com/RoyalCities/RC-stable-audio-tools.git
 cd RC-stable-audio-tools
 ```
 
-### 🔧 Setup the Environment 
-
-#### ✅ Python Version (Important)
-
-Use **Python 3.10**. Newer versions (e.g. 3.11+) can fail dependency resolution due to pinned packages (notably older SciPy wheels).
+### 🔧 Setup the Environment
 
 #### 🌐 Create a Virtual Environment
 
@@ -78,10 +84,10 @@ It's recommended to use a virtual environment to manage dependencies:
 
 #### 📦 Install the Required Packages
 
-Install Stable Audio Tools and the necessary packages from `setup.py`:
+This fork is currently tested with **Python 3.10**. The required runtime dependencies are defined and pinned in this repository's `setup.py`.
 
 ```bash
-pip install stable-audio-tools
+python -m pip install --upgrade pip
 pip install .
 ```
 
@@ -91,7 +97,7 @@ To ensure Gradio uses GPU/CUDA and not default to CPU, uninstall and reinstall `
 
 ```bash
 pip uninstall -y torch torchvision torchaudio
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 ```
 
 ### 🧪 Optional (Windows / Linux): INT4 / Low-VRAM Mode (TorchAO)
@@ -168,7 +174,7 @@ python run_gradio.py --model-config models/path-to-config/example_config.json --
 
 Input prompts in the Gradio interface to generate audio and MIDI files, which will be saved as specified in `config.json`.
 
-The interface has been expanded with Bar/BPM settings (which modifies both the user prompt + sample length conditioning), MIDI display + conversion and also features Dynamic Model Loading. 
+The interface includes Bar/BPM conditioning, MIDI display + conversion, Dynamic Model Loading, model-specific prompt builders, One Shot generation, Keybed generation/export, Layered Keybeds, and Batch Generation.
 
 Models must be stored inside their own sub folder along with their accompanying config files. i.e. A single finetune could have multiple checkpoints. All related checkpoints could go inside of the same "model1" subfolder but its important their associated config file is included within the same folder as the checkpoint itself.
 
@@ -180,10 +186,12 @@ To switch models simply pick the model you want to load using the drop down and 
 
 When you launch with `python run_gradio.py`, it will:
 
-1. First check if the `models` folder has any model downloaded.
-2. If there is a model, it will launch the full UI with that model loaded.
-3. If the models folder is empty, it will launch a HFFS (HuggingFace downloader) UI, where you can either select from the preset models, or enter any HuggingFace repo id to download. (After downloading a model, you will need to restart the app to launch the full UI).
-4. To customize the preset models that appear in the downloader dropdown, edit the `config.json` file to add more entries to the `hffs[0].options` array.
+1. First check if the `models` folder contains a downloaded model.
+2. If a model is available, it will launch the full UI with a checkpoint loaded.
+3. If the models folder is empty, it will launch the Hugging Face model downloader, where you can select from the preset models or enter a Hugging Face repo ID manually. After downloading a model, restart the app to launch the full UI.
+4. To customize the preset models shown in the downloader dropdown, edit the `config.json` file and add entries to the `hffs[0].options` array.
+
+The downloader keeps the files needed to run the model, such as checkpoints, configuration files, README files, and licenses, while avoiding unnecessary repository assets.
 
 ## 🛠️ Advanced Usage
 

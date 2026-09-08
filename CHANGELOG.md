@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4] - 2026-09-08
+### Added
+- Improved prompt management and model-specific prompt builders.
+- One Shot generation support.
+- Instrument generation via DecentSampler / SFZ export.
+- Layered Keybed and Batch Generation workflows.
+- Multiple Gradio UI and workflow improvements.
+
 ## [1.3] - 2026-01-28
 ### Added
 - TorchAO Quantization support (Windows / Linux)
