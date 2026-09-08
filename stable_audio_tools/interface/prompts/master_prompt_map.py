@@ -9,7 +9,7 @@ from typing import List, Tuple, Dict, Optional
 FOUNDATION_VARIANT_CHOICES = ["auto", "M1", "T1"]
 
 FOUNDATION_VARIANT_LABELS = {
-    "auto": "Auto (by mode)",
+    "auto": "Auto (by modes)",
     "M1": "M1 – Standard (anchor / coherent)",
     "T1": "T1 – Mix & Match (synth-heavy / richer)",
 }
